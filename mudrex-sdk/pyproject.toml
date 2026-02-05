@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mudrex-trading-sdk"
+version = "1.2.0"
+description = "Unofficial Python SDK for Mudrex Futures Trading API"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+    {name = "Jithin Mohandas (DecentralizedJM)", email = "mohandasjithin@gmail.com"}
+]
+maintainers = [
+    {name = "Jithin Mohandas (DecentralizedJM)", email = "mohandasjithin@gmail.com"}
+]
+keywords = [
+    "mudrex",
+    "trading",
+    "futures",
+    "crypto",
+    "cryptocurrency",
+    "api",
+    "sdk",
+    "bitcoin",
+    "ethereum",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Investment",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+mcp = [
+    "mcp>=1.0.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "isort>=5.12.0",
+    "mypy>=1.0.0",
+    "types-requests>=2.28.0",
+    "ruff>=0.1.0",
+]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.0.0",
+    "mkdocstrings[python]>=0.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/DecentralizedJM/mudrex-trading-sdk"
+Documentation = "https://docs.trade.mudrex.com"
+Repository = "https://github.com/DecentralizedJM/mudrex-trading-sdk"
+Issues = "https://github.com/DecentralizedJM/mudrex-trading-sdk/issues"
+Changelog = "https://github.com/DecentralizedJM/mudrex-trading-sdk/blob/main/CHANGELOG.md"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["mudrex*"]
+
+[tool.black]
+line-length = 100
+target-version = ["py38", "py39", "py310", "py311", "py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-v --cov=mudrex --cov-report=term-missing"
