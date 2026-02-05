@@ -1,42 +1,30 @@
-# Railway Deployment Guide
+# Railway Deployment Guide (Hardcoded Version)
 
-This bot is optimized for deployment on [Railway](https://railway.app/).
+This bot is specifically optimized for Railway and executes a fixed Supertrend strategy across all available USDT pairs.
 
-## 🚀 Quick Deploy
+## 📋 Railway Variables
 
-1. **New Project**: In Railway, create a new project from this GitHub repo.
-2. **Variables**: Add the required environment variables.
-3. **Volume**: Add a persistent volume for state storage (Optional but recommended).
+Set these in your Railway service settings:
 
-## 🛠️ Environment Variables
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `MUDREX_API_SECRET` | `your_secret_here` | **Required**: Your API key |
+| `TRADING_DRY_RUN` | `false` | Set to `true` to simulate trades without real money |
+| `PYTHONUNBUFFERED` | `1` | Ensures logs are visible in real-time |
 
-Copy these into your Railway service settings:
+## 💾 Persistent Storage (CRITICAL)
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `MUDREX_API_SECRET` | **YES** | - | Your Mudrex API Secret Key |
-| `TRADING_SYMBOLS` | **YES** | - | Comma-separated symbols (e.g., `BTCUSDT,ETHUSDT`) |
-| `TRADING_DRY_RUN` | No | `true` | Set to `false` to execute real trades |
-| `TRADING_LEVERAGE` | No | `5` | Leverage (1-125) |
-| `TRADING_TIMEFRAME` | No | `5m` | OHLCV Timeframe |
-| `PYTHONUNBUFFERED` | No | `1` | Ensures logs show up immediately |
+To ensure the bot remembers its open positions and trailing stop levels after a restart or deployment, you **must** use a Railway Volume.
 
-## 💾 Persistent Storage (State)
+1.  In Railway, go to your service dashboard.
+2.  Navigate to the **Volumes** tab.
+3.  Click **Create Volume**.
+4.  Set the **Mount Path** to: `/app/data`
 
-To prevent the bot from forgetting open positions if it restarts, you should add a **Volume** in Railway.
+The bot is configured to store its state in `/app/data/bot_state.json`.
 
-1. Go to your Railway Service.
-2. Click **Volumes** tab.
-3. Create a new volume.
-4. Mount path: `/app/data`
+## 📈 Monitoring
 
-The bot will automatically check `/app/data/bot_state.json` for existing state.
+The bot automatically discovers all active USDT trading pairs on Mudrex. It iterates through them every 5 minutes (standard cycle).
 
-## 📋 Docker Configuration
-
-The included `Dockerfile` is set up for:
-- **Base Image**: `python:3.10-slim`
-- **Entrypoint**: `python main.py`
-- **Dependencies**: Installs from `requirements.txt` + `mudrex-sdk`
-
-No additional Railway build inputs are needed.
+You can monitor the bot's activities via the Railway **Logs** tab. It will log every signal check, entry, and trailing stop update.
