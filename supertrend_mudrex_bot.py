@@ -175,7 +175,7 @@ class SupertrendMudrexBot:
             logger.debug(f"{symbol} Signal: HOLD ({output['reason']})")
 
         if output["signal"] in ("LONG", "SHORT") and output.get("proposed_position"):
-            result = self.adapter.execute_proposed_position(symbol, output["proposed_position"])
+            result = self.adapter.execute_proposed_position(symbol, output["proposed_position"], balance=balance)
             if result.success and result.position_state and result.action in ("OPEN_LONG", "OPEN_SHORT"):
                 pp = output["proposed_position"]
                 self.notifier.notify_open(

@@ -168,6 +168,8 @@ On every candle close, `process_candle` returns:
 | `MUDREX_API_SECRET` | **YES** (live) | Mudrex API Secret. Live trading is blocked if missing. |
 | `TIMEFRAME` | No | Bybit kline interval: `1`, `5`, `15`, `60`, `D`. Default: `15` (15-minute). |
 | `MARGIN_PERCENT` | No | Margin per entry as percent of balance (1–100). Default: `2` (2%). |
+| `MIN_ORDER_VALUE` | No | Min notional (quantity × price) in USDT. Mudrex ~$7–8. Default: `7`. Orders below this are skipped. |
+| `ORDER_DELAY_SECONDS` | No | Delay between order API calls to respect rate limits. Default: `0.5`. |
 | `TRADING_DRY_RUN` | No | `true` for testing (default: `false`). When `true`, no real orders are sent. |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram bot token (from @BotFather) |
 | `TELEGRAM_CHAT_ID` | No | Comma-separated chat IDs (from @userinfobot). Supports multiple users/channels. |

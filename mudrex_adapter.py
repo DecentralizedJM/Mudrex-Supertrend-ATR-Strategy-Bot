@@ -8,6 +8,8 @@ Handles order execution, position management, and trailing stop updates.
 
 import sys
 import os
+import time
+import math
 import logging
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
@@ -371,6 +373,7 @@ class MudrexStrategyAdapter:
         self,
         symbol: str,
         proposed_position: dict,
+        balance: Optional[float] = None,
     ) -> ExecutionResult:
         """Open position from strategy_core proposed_position (quantity, leverage precomputed)."""
         if len(self._positions) >= self.trading_config.max_positions:
@@ -383,13 +386,56 @@ class MudrexStrategyAdapter:
             )
         side = Signal(proposed_position["side"])
         quantity = proposed_position["quantity"]
+        entry_price = proposed_position["entry_price"]
+        notional = quantity * entry_price
+        min_val = getattr(self.trading_config, "min_order_value", 7.0)
         lev = int(proposed_position.get("leverage", self.trading_config.leverage))
         lev = max(
             self.trading_config.leverage_min,
             min(self.trading_config.leverage_max, lev),
         )
+
+        if notional < min_val and balance is not None and balance > 0:
+            margin_pct = self.trading_config.margin_percent / 100.0
+            margin = balance * margin_pct
+            required_lev = min_val / margin
+            if required_lev <= self.trading_config.leverage_max:
+                lev = max(lev, math.ceil(required_lev))
+                lev = min(lev, self.trading_config.leverage_max)
+                quantity = (margin * lev) / entry_price
+                asset_info = self.get_asset_info(symbol)
+                if asset_info:
+                    quantity = self.round_quantity(quantity, asset_info["quantity_step"])
+                    if quantity < asset_info["min_quantity"]:
+                        return ExecutionResult(
+                            success=False,
+                            action="NONE",
+                            symbol=symbol,
+                            message=f"Scaled quantity {quantity} below min {asset_info['min_quantity']}",
+                            error="Order value below minimum",
+                        )
+                notional = quantity * entry_price
+                if notional >= min_val:
+                    logger.info(f"Scaled leverage to {lev}x for min order value (notional ${notional:.2f})")
+            else:
+                return ExecutionResult(
+                    success=False,
+                    action="NONE",
+                    symbol=symbol,
+                    message=f"Cannot reach min ${min_val:.0f} (required lev {required_lev:.0f}x > max {self.trading_config.leverage_max}x)",
+                    error="Order value below minimum",
+                )
+
+        if notional < min_val:
+            return ExecutionResult(
+                success=False,
+                action="NONE",
+                symbol=symbol,
+                message=f"Order value ${notional:.2f} below minimum ${min_val:.0f}",
+                error="Order value below minimum",
+            )
+
         leverage = str(lev)
-        entry_price = proposed_position["entry_price"]
         stop_loss = proposed_position["stop_loss"]
         take_profit = proposed_position["take_profit"]
         return self.open_position(
@@ -443,6 +489,11 @@ class MudrexStrategyAdapter:
         logger.info(f"  Entry: ${entry_price:.4f}")
         logger.info(f"  Stop Loss: ${stop_loss:.4f}")
         logger.info(f"  Take Profit: ${take_profit:.4f}")
+        
+        if not self.dry_run:
+            delay = getattr(self.trading_config, "order_delay_seconds", 0.5)
+            if delay > 0:
+                time.sleep(delay)
         
         if self.dry_run:
             # Simulate order in dry run mode

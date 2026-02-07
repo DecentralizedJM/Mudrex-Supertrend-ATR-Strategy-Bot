@@ -68,6 +68,12 @@ class TradingConfig:
     
     # Minimum balance required to trade (USDT)
     min_balance: float = 10.0
+
+    # Min order value (notional = quantity x price) in USDT. Mudrex ~$7-8. Set via MIN_ORDER_VALUE.
+    min_order_value: float = 7.0
+
+    # Delay (seconds) between order API calls to respect rate limits. Set via ORDER_DELAY_SECONDS.
+    order_delay_seconds: float = 0.5
     
     # Maximum concurrent positions (no cap = 999)
     max_positions: int = 999
@@ -146,6 +152,14 @@ class Config:
         config.trading.margin_percent = margin_percent
         config.trading.leverage_min = config.strategy.leverage_min
         config.trading.leverage_max = config.strategy.leverage_max
+        try:
+            config.trading.min_order_value = max(1.0, float(os.getenv("MIN_ORDER_VALUE", "7").strip()))
+        except ValueError:
+            config.trading.min_order_value = 7.0
+        try:
+            config.trading.order_delay_seconds = max(0.0, float(os.getenv("ORDER_DELAY_SECONDS", "0.5").strip()))
+        except ValueError:
+            config.trading.order_delay_seconds = 0.5
         tf = os.getenv("TIMEFRAME", "").strip()
         if tf:
             config.trading.timeframe = tf
