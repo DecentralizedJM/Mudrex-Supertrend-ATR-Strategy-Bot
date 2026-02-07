@@ -73,7 +73,7 @@ class TradingConfig:
     min_order_value: float = 7.0
 
     # Delay (seconds) between order API calls to respect rate limits. Set via ORDER_DELAY_SECONDS.
-    order_delay_seconds: float = 0.5
+    order_delay_seconds: float = 2.0
     
     # Maximum concurrent positions (no cap = 999)
     max_positions: int = 999
@@ -157,7 +157,7 @@ class Config:
         except ValueError:
             config.trading.min_order_value = 7.0
         try:
-            config.trading.order_delay_seconds = max(0.0, float(os.getenv("ORDER_DELAY_SECONDS", "0.5").strip()))
+            config.trading.order_delay_seconds = max(0.0, float(os.getenv("ORDER_DELAY_SECONDS", "2").strip()))
         except ValueError:
             config.trading.order_delay_seconds = 0.5
         tf = os.getenv("TIMEFRAME", "").strip()

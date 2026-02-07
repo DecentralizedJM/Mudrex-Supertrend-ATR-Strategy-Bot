@@ -195,12 +195,14 @@ class MudrexClient:
                 if response.status_code == 429:
                     if attempt < self.max_retries:
                         retry_after = float(response.headers.get("Retry-After", 1))
+                        retry_after = min(retry_after, 60.0)  # Cap at 60s (API may return ms or huge value)
                         logger.warning(f"Rate limited, retrying in {retry_after}s...")
                         time.sleep(retry_after)
                         continue
+                    retry_after = min(float(response.headers.get("Retry-After", 1)), 60.0)
                     raise MudrexRateLimitError(
                         message="Rate limit exceeded after retries",
-                        retry_after=float(response.headers.get("Retry-After", 1)),
+                        retry_after=retry_after,
                         status_code=429,
                     )
                 

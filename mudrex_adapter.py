@@ -232,21 +232,37 @@ class MudrexStrategyAdapter:
         try:
             positions = self.client.positions.list_open()
             
-            # Update cache with exchange data
+            # Update cache with exchange data; hydrate positions not in cache (e.g. from prior run)
             for pos in positions:
                 if pos.symbol in self._positions:
                     # Update existing position state
                     state = self._positions[pos.symbol]
                     current_price = float(pos.mark_price) if pos.mark_price else state.entry_price
-                    
                     # Update high/low for trailing stop
                     if state.side == Signal.LONG:
                         state.highest_price = max(state.highest_price, current_price)
                     else:
                         state.lowest_price = min(state.lowest_price, current_price)
                 else:
-                    # New position found on exchange (maybe opened manually)
-                    logger.warning(f"Found position on exchange not in cache: {pos.symbol}")
+                    # Hydrate from exchange (prior run or manual); prevents opening over max_positions
+                    entry = float(pos.entry_price) if pos.entry_price else 0.0
+                    mark = float(pos.mark_price) if pos.mark_price else entry
+                    sl = float(pos.stoploss_price) if pos.stoploss_price else 0.0
+                    tp = float(pos.takeprofit_price) if pos.takeprofit_price else 0.0
+                    qty = float(pos.quantity) if pos.quantity else 0.0
+                    side = Signal(getattr(pos.side, "value", str(pos.side)))
+                    self._positions[pos.symbol] = PositionState(
+                        symbol=pos.symbol,
+                        position_id=pos.position_id,
+                        side=side,
+                        entry_price=entry,
+                        quantity=qty,
+                        stop_loss=sl,
+                        take_profit=tp,
+                        highest_price=max(entry, mark) if side == Signal.LONG else entry,
+                        lowest_price=min(entry, mark) if side == Signal.SHORT else entry,
+                        initial_stop_loss=sl,
+                    )
             
             return self._positions
         except MudrexAPIError as e:
