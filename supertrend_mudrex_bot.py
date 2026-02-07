@@ -17,8 +17,9 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from strategy import SupertrendTSLStrategy, Signal, StrategyResult
+from strategy_core import process_candle, TradeState, StrategyConfig, update_trailing
 from mudrex_adapter import MudrexStrategyAdapter, ExecutionResult, PositionState
+from mudrex_adapter import Signal
 from config import Config, get_config
 from data_manager import DataManager
 
@@ -67,19 +68,22 @@ class SupertrendMudrexBot:
             interval=self.config.trading.timeframe,
             lookback=self.config.trading.lookback_periods
         )
-        
-        # Initialize strategy
-        self.strategy = SupertrendTSLStrategy(
+
+        self.strategy_config = StrategyConfig(
             atr_period=self.config.strategy.atr_period,
-            factor=self.config.strategy.factor,
-            risk_atr_len=self.config.strategy.risk_atr_len,
+            supertrend_factor=self.config.strategy.factor,
             risk_atr_mult=self.config.strategy.risk_atr_mult,
-            tsl_atr_len=self.config.strategy.tsl_atr_len,
-            tsl_mult=self.config.strategy.tsl_mult,
+            tsl_atr_mult=self.config.strategy.tsl_mult,
             tp_rr=self.config.strategy.tp_rr,
-            position_size_pct=self.config.strategy.position_size_pct,
+            margin_pct=self.config.strategy.margin_pct,
+            leverage_min=self.config.strategy.leverage_min,
+            leverage_max=self.config.strategy.leverage_max,
+            leverage=int(self.config.trading.leverage) if self.config.trading.leverage else 5,
+            max_bars_in_trade=self.config.strategy.max_bars_in_trade,
+            volatility_filter_enabled=self.config.strategy.volatility_filter_enabled,
+            volatility_median_window=self.config.strategy.volatility_median_window,
         )
-        
+
         # Initialize Mudrex adapter
         self.adapter = MudrexStrategyAdapter(
             mudrex_config=self.config.mudrex,
@@ -87,19 +91,45 @@ class SupertrendMudrexBot:
             dry_run=self.config.trading.dry_run,
         )
         
+    def _df_to_ohlcv(self, df: pd.DataFrame) -> list[dict]:
+        """Convert DataFrame to OHLCV list of dicts for strategy_core."""
+        ohlcv = []
+        for _, row in df.iterrows():
+            ohlcv.append({
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+                "volume": float(row["volume"]) if "volume" in row else 0.0,
+            })
+        return ohlcv
+
+    def _position_to_trade_state(self, position: PositionState) -> TradeState:
+        """Build TradeState from adapter PositionState."""
+        trailing = position.stop_loss if position.stop_loss != position.initial_stop_loss else None
+        return TradeState(
+            position_side=position.side.value,
+            entry_price=position.entry_price,
+            stop_loss=position.stop_loss,
+            take_profit=position.take_profit,
+            trailing_stop=trailing,
+            bars_in_trade=position.bars_in_trade,
+            extreme_price=position.highest_price if position.side == Signal.LONG else position.lowest_price,
+            initial_stop_loss=position.initial_stop_loss,
+        )
+
     def process_symbol(
         self,
         symbol: str,
         balance: float,
     ) -> ExecutionResult:
         """
-        Process a single symbol: get data from manager, generate signal, execute.
+        Process a single symbol: get data, run strategy_core, execute.
         """
         logger.info(f"Processing {symbol}...")
-        
-        # Get OHLCV data from DataManager
+
         df = self.data_manager.get_ohlcv(symbol)
-        if df is None or len(df) < 20: # Ensure enough data for indicators
+        if df is None or len(df) < 20:
             return ExecutionResult(
                 success=False,
                 action="NONE",
@@ -107,75 +137,69 @@ class SupertrendMudrexBot:
                 message=f"Insufficient candle data for {symbol} ({len(df) if df is not None else 0} candles)",
                 error="Data unavailable",
             )
-        
-        # Check if we have an existing position
+
+        ohlcv = self._df_to_ohlcv(df)
+        asset_info = self.adapter.get_asset_info(symbol)
+        contract_specs = (
+            {
+                "min_quantity": float(asset_info["min_quantity"]),
+                "quantity_step": float(asset_info["quantity_step"]),
+            }
+            if asset_info
+            else {"min_quantity": 0.001, "quantity_step": 0.001}
+        )
+
+        prev_state = TradeState.flat()
         if self.adapter.has_position(symbol):
-            return self._manage_existing_position(symbol, df)
-        
-        # Generate signal
-        signal_result = self.strategy.generate_signal(df)
-        logger.info(f"{symbol} Signal: {signal_result.signal.value}")
-        
-        if signal_result.signal == Signal.NEUTRAL:
-            return ExecutionResult(
-                success=True,
-                action="NONE",
-                symbol=symbol,
-                message=f"No signal for {symbol}",
-            )
-        
-        # Execute signal
-        return self.adapter.execute_signal(
-            symbol=symbol,
-            signal_result=signal_result,
-            balance=balance,
+            pos = self.adapter._positions[symbol]
+            prev_state = self._position_to_trade_state(pos)
+
+        output = process_candle(
+            ohlcv=ohlcv,
+            account_equity=balance,
+            contract_specs=contract_specs,
+            prev_state=prev_state,
+            config=self.strategy_config,
         )
-    
-    def _manage_existing_position(
-        self,
-        symbol: str,
-        df: pd.DataFrame,
-    ) -> ExecutionResult:
-        """
-        Manage an existing position (update TSL, check for close signal).
-        """
-        position = self.adapter._positions[symbol]
-        
-        # Update high/low for trailing stop
-        if position.side == Signal.LONG:
-            position.highest_price = max(position.highest_price, float(df['high'].iloc[-1]))
-        else:
-            position.lowest_price = min(position.lowest_price, float(df['low'].iloc[-1]))
-        
-        # Check for opposite signal
-        signal_result = self.strategy.generate_signal(df)
-        
-        if (position.side == Signal.LONG and signal_result.signal == Signal.SHORT) or \
-           (position.side == Signal.SHORT and signal_result.signal == Signal.LONG):
-            # Close position on opposite signal
-            logger.info(f"Opposite signal detected for {symbol}, closing position")
+
+        logger.info(f"{symbol} Signal: {output['signal']} ({output['reason']})")
+
+        if output["signal"] in ("LONG", "SHORT") and output.get("proposed_position"):
+            return self.adapter.execute_proposed_position(symbol, output["proposed_position"])
+
+        if output["signal"] == "EXIT":
+            logger.info(f"Exit signal for {symbol}: {output['reason']}")
             return self.adapter.close_position(symbol)
-        
-        # Calculate new trailing stop
-        new_tsl = self.strategy.calculate_trailing_stop(
-            df=df,
-            position_side=position.side,
-            current_stop=position.stop_loss,
-            highest_price=position.highest_price,
-            lowest_price=position.lowest_price,
-        )
-        
-        # Update TSL if moved favorably
-        if position.side == Signal.LONG and new_tsl > position.stop_loss:
-            return self.adapter.update_trailing_stop(symbol, new_tsl)
-        elif position.side == Signal.SHORT and new_tsl < position.stop_loss:
-            return self.adapter.update_trailing_stop(symbol, new_tsl)
-        
+
+        if output["signal"] == "HOLD" and self.adapter.has_position(symbol):
+            pos = self.adapter._positions[symbol]
+            pos.bars_in_trade += 1
+            pos.highest_price = max(pos.highest_price, float(df["high"].iloc[-1]))
+            pos.lowest_price = min(pos.lowest_price, float(df["low"].iloc[-1]))
+            state_updated = self._position_to_trade_state(pos)
+            import numpy as np
+            from strategy_core.indicators import wilder_atr
+            h = np.array([float(r["high"]) for r in ohlcv])
+            l_arr = np.array([float(r["low"]) for r in ohlcv])
+            c = np.array([float(r["close"]) for r in ohlcv])
+            atr_arr = wilder_atr(h, l_arr, c, self.strategy_config.atr_period)
+            atr_val = float(atr_arr[-1]) if len(atr_arr) > 0 and not np.isnan(atr_arr[-1]) else 1e-6
+            new_tsl = update_trailing(
+                state_updated,
+                float(df["high"].iloc[-1]),
+                float(df["low"].iloc[-1]),
+                max(atr_val, 1e-6),
+                self.strategy_config.tsl_atr_mult,
+            )
+            if new_tsl is not None:
+                if (pos.side == Signal.LONG and new_tsl > pos.stop_loss) or (pos.side == Signal.SHORT and new_tsl < pos.stop_loss):
+                    return self.adapter.update_trailing_stop(symbol, new_tsl)
+
         return ExecutionResult(
             success=True,
             action="NONE",
             symbol=symbol,
-            message=f"Position maintained, current PnL tracking",
+            message=f"No action for {symbol}",
         )
     
     def run_once(self) -> BotExecutionResult:

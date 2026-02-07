@@ -15,24 +15,30 @@ from typing import List, Optional
 @dataclass
 class StrategyConfig:
     """Hardcoded Strategy Parameters."""
-    
-    # Supertrend parameters
+
+    # Supertrend
     atr_period: int = 10
     factor: float = 3.0
-    
-    # Risk ATR parameters
-    risk_atr_len: int = 14
+
+    # Risk (same ATR period for Supertrend and risk)
+    risk_atr_len: int = 10  # Same as atr_period
+    tsl_atr_len: int = 10   # Same as atr_period
     risk_atr_mult: float = 2.0
-    
-    # Trailing Stop Loss parameters
-    tsl_atr_len: int = 14
     tsl_mult: float = 2.0
-    
-    # Take Profit (Risk:Reward ratio 1:2)
-    tp_rr: float = 2.0
-    
-    # Position sizing (2% of futures wallet balance as margin)
-    position_size_pct: float = 0.02
+    tp_rr: float = 2.0  # Risk:Reward 1:2
+
+    # Position sizing: 2% margin, leverage 5x-10x
+    margin_pct: float = 0.02
+    leverage_min: int = 5
+    leverage_max: int = 10
+    leverage: int = 5
+
+    # Exits
+    max_bars_in_trade: int = 24
+
+    # Volatility filter (optional)
+    volatility_filter_enabled: bool = False
+    volatility_median_window: int = 20
 
 
 @dataclass
@@ -57,9 +63,9 @@ class TradingConfig:
     # Minimum balance required to trade (USDT)
     min_balance: float = 10.0
     
-    # Maximum concurrent positions
-    max_positions: int = 50
-    
+    # Maximum concurrent positions (no cap = 999)
+    max_positions: int = 999
+
     # Dry run mode
     dry_run: bool = False
 
@@ -119,7 +125,9 @@ class Config:
                 "atr_period": self.strategy.atr_period,
                 "factor": self.strategy.factor,
                 "tp_rr": self.strategy.tp_rr,
-                "position_size_pct": self.strategy.position_size_pct,
+                "margin_pct": self.strategy.margin_pct,
+                "leverage_min": self.strategy.leverage_min,
+                "leverage_max": self.strategy.leverage_max,
             },
             "trading": {
                 "leverage": self.trading.leverage,

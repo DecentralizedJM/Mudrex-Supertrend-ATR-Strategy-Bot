@@ -36,10 +36,12 @@ class PositionState:
     quantity: float
     stop_loss: float
     take_profit: float
-    highest_price: float  # For trailing stop (LONG)
-    lowest_price: float   # For trailing stop (SHORT)
+    highest_price: float
+    lowest_price: float
+    initial_stop_loss: float = 0.0  # For 1R trailing activation
+    bars_in_trade: int = 0
     entry_time: datetime = field(default_factory=datetime.utcnow)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "symbol": self.symbol,
@@ -51,9 +53,11 @@ class PositionState:
             "take_profit": self.take_profit,
             "highest_price": self.highest_price,
             "lowest_price": self.lowest_price,
+            "initial_stop_loss": self.initial_stop_loss,
+            "bars_in_trade": self.bars_in_trade,
             "entry_time": self.entry_time.isoformat(),
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PositionState":
         return cls(
@@ -66,6 +70,8 @@ class PositionState:
             take_profit=data["take_profit"],
             highest_price=data["highest_price"],
             lowest_price=data["lowest_price"],
+            initial_stop_loss=data.get("initial_stop_loss", data["stop_loss"]),
+            bars_in_trade=data.get("bars_in_trade", 0),
             entry_time=datetime.fromisoformat(data["entry_time"]),
         )
 
@@ -276,15 +282,6 @@ class MudrexStrategyAdapter:
                 message=f"No signal for {symbol}",
             )
         
-        # Check if we can open more positions
-        if len(self._positions) >= self.trading_config.max_positions:
-            return ExecutionResult(
-                success=False,
-                action="NONE",
-                symbol=symbol,
-                message=f"Max positions ({self.trading_config.max_positions}) reached",
-            )
-        
         # Get asset info for quantity rounding
         asset_info = self.get_asset_info(symbol)
         if not asset_info:
@@ -328,6 +325,28 @@ class MudrexStrategyAdapter:
             take_profit=signal_result.take_profit,
         )
     
+    def execute_proposed_position(
+        self,
+        symbol: str,
+        proposed_position: dict,
+    ) -> ExecutionResult:
+        """Open position from strategy_core proposed_position (quantity, leverage precomputed)."""
+        side = Signal(proposed_position["side"])
+        quantity = proposed_position["quantity"]
+        leverage = str(proposed_position.get("leverage", self.trading_config.leverage))
+        entry_price = proposed_position["entry_price"]
+        stop_loss = proposed_position["stop_loss"]
+        take_profit = proposed_position["take_profit"]
+        return self.open_position(
+            symbol=symbol,
+            side=side,
+            quantity=quantity,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            leverage=leverage,
+        )
+
     def open_position(
         self,
         symbol: str,
@@ -336,6 +355,7 @@ class MudrexStrategyAdapter:
         entry_price: float,
         stop_loss: float,
         take_profit: float,
+        leverage: Optional[str] = None,
     ) -> ExecutionResult:
         """
         Open a new position.
@@ -361,7 +381,8 @@ class MudrexStrategyAdapter:
             Result of execution
         """
         action = f"OPEN_{side.value}"
-        
+        lev = leverage or self.trading_config.leverage
+
         logger.info(f"Opening {side.value} position on {symbol}")
         logger.info(f"  Quantity: {quantity}")
         logger.info(f"  Entry: ${entry_price:.4f}")
@@ -380,9 +401,10 @@ class MudrexStrategyAdapter:
                 take_profit=take_profit,
                 highest_price=entry_price,
                 lowest_price=entry_price,
+                initial_stop_loss=stop_loss,
             )
             self._positions[symbol] = position_state
-            
+
             return ExecutionResult(
                 success=True,
                 action=action,
@@ -394,14 +416,14 @@ class MudrexStrategyAdapter:
         
         try:
             # Set leverage first
-            self.set_leverage(symbol, self.trading_config.leverage)
-            
+            self.set_leverage(symbol, lev)
+
             # Place market order with SL/TP
             order = self.client.orders.create_market_order(
                 symbol=symbol,
                 side=side.value,
                 quantity=str(quantity),
-                leverage=self.trading_config.leverage,
+                leverage=lev,
                 stoploss_price=str(round(stop_loss, 4)),
                 takeprofit_price=str(round(take_profit, 4)),
             )
@@ -419,6 +441,7 @@ class MudrexStrategyAdapter:
                 take_profit=take_profit,
                 highest_price=entry_price,
                 lowest_price=entry_price,
+                initial_stop_loss=stop_loss,
             )
             self._positions[symbol] = position_state
             

@@ -85,7 +85,7 @@ def print_config(config: Config) -> None:
     print(f"  ├── Symbols: {', '.join(config.trading.symbols)}")
     print(f"  ├── Timeframe: {config.trading.timeframe}")
     print(f"  ├── Leverage: {config.trading.leverage}x")
-    print(f"  ├── Position Size: {config.strategy.position_size_pct * 100:.1f}%")
+    print(f"  ├── Margin: {config.strategy.margin_pct * 100:.1f}%")
     print(f"  ├── Dry Run: {'Yes ✅' if config.trading.dry_run else 'No ❌'}")
     print(f"  └── Max Positions: {config.trading.max_positions}")
     

@@ -353,39 +353,4 @@ class SupertrendTSLStrategy:
         
         return position_size
     
-    def backtest(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Run backtest on OHLC data.
-        
-        Parameters:
-        -----------
-        df : pd.DataFrame
-            OHLCV dataframe
-            
-        Returns:
-        --------
-        pd.DataFrame
-            DataFrame with signals and position tracking
-        """
-        df = df.copy()
-        
-        # Calculate Supertrend
-        supertrend, direction = self.calculate_supertrend(df, self.atr_period, self.factor)
-        
-        # Calculate ATR values
-        risk_atr = self.calculate_atr(df, self.risk_atr_len)
-        tsl_atr = self.calculate_atr(df, self.tsl_atr_len)
-        
-        # Add to dataframe
-        df['supertrend'] = supertrend
-        df['direction'] = direction
-        df['risk_atr'] = risk_atr
-        df['tsl_atr'] = tsl_atr
-        
-        # Generate signals
-        df['direction_change'] = direction.diff()
-        df['signal'] = 'NEUTRAL'
-        df.loc[df['direction_change'] < 0, 'signal'] = 'LONG'
-        df.loc[df['direction_change'] > 0, 'signal'] = 'SHORT'
-        
-        return df
+    # backtest() removed - no backtesting per strategy spec
