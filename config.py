@@ -27,10 +27,10 @@ class StrategyConfig:
     tsl_mult: float = 2.0
     tp_rr: float = 2.0  # Risk:Reward 1:2
 
-    # Position sizing: 2% margin, leverage 5x-10x
+    # Position sizing: 2% margin, leverage 5x-20x (asset max may be lower)
     margin_pct: float = 0.02
     leverage_min: int = 5
-    leverage_max: int = 10
+    leverage_max: int = 20
     leverage: int = 5
 
     # Exits
@@ -51,7 +51,7 @@ class TradingConfig:
     # Default leverage (clamped to leverage_min/max at execution)
     leverage: str = "5"
     leverage_min: int = 5
-    leverage_max: int = 10
+    leverage_max: int = 20
 
     # Margin per entry as percent of balance (1-100). Default 2%
     # Set via env MARGIN_PERCENT (e.g. 2 for 2%, 5 for 5%)

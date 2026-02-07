@@ -389,40 +389,49 @@ class MudrexStrategyAdapter:
         entry_price = proposed_position["entry_price"]
         notional = quantity * entry_price
         min_val = getattr(self.trading_config, "min_order_value", 7.0)
+        asset_info = self.get_asset_info(symbol)
+        if not asset_info:
+            return ExecutionResult(
+                success=False,
+                action="NONE",
+                symbol=symbol,
+                message=f"Failed to get asset info for {symbol}",
+                error="Asset info unavailable",
+            )
+        asset_max_lev = int(asset_info.get("max_leverage", 20))
+        effective_max_lev = min(self.trading_config.leverage_max, asset_max_lev)
         lev = int(proposed_position.get("leverage", self.trading_config.leverage))
         lev = max(
             self.trading_config.leverage_min,
-            min(self.trading_config.leverage_max, lev),
+            min(effective_max_lev, lev),
         )
 
         if notional < min_val and balance is not None and balance > 0:
             margin_pct = self.trading_config.margin_percent / 100.0
             margin = balance * margin_pct
             required_lev = min_val / margin
-            if required_lev <= self.trading_config.leverage_max:
+            if required_lev <= effective_max_lev:
                 lev = max(lev, math.ceil(required_lev))
-                lev = min(lev, self.trading_config.leverage_max)
+                lev = min(lev, effective_max_lev)
                 quantity = (margin * lev) / entry_price
-                asset_info = self.get_asset_info(symbol)
-                if asset_info:
-                    quantity = self.round_quantity(quantity, asset_info["quantity_step"])
-                    if quantity < asset_info["min_quantity"]:
-                        return ExecutionResult(
-                            success=False,
-                            action="NONE",
-                            symbol=symbol,
-                            message=f"Scaled quantity {quantity} below min {asset_info['min_quantity']}",
-                            error="Order value below minimum",
-                        )
+                quantity = self.round_quantity(quantity, asset_info["quantity_step"])
+                if quantity < asset_info["min_quantity"]:
+                    return ExecutionResult(
+                        success=False,
+                        action="NONE",
+                        symbol=symbol,
+                        message=f"Scaled qty {quantity} below asset min {asset_info['min_quantity']}",
+                        error="Order value below minimum",
+                    )
                 notional = quantity * entry_price
                 if notional >= min_val:
-                    logger.info(f"Scaled leverage to {lev}x for min order value (notional ${notional:.2f})")
+                    logger.info(f"Scaled to {lev}x (asset max {asset_max_lev}x) for min order value (notional ${notional:.2f})")
             else:
                 return ExecutionResult(
                     success=False,
                     action="NONE",
                     symbol=symbol,
-                    message=f"Cannot reach min ${min_val:.0f} (required lev {required_lev:.0f}x > max {self.trading_config.leverage_max}x)",
+                    message=f"Cannot reach min ${min_val:.0f} (need {required_lev:.0f}x > asset max {asset_max_lev}x)",
                     error="Order value below minimum",
                 )
 

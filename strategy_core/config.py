@@ -18,7 +18,7 @@ class StrategyConfig:
     tp_rr: float = 2.0  # Risk:Reward 1:2
     margin_pct: float = 0.02
     leverage_min: int = 5
-    leverage_max: int = 10
+    leverage_max: int = 20
     leverage: int = 5  # Base leverage (clamped to min/max)
 
     # Exits

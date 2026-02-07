@@ -94,7 +94,7 @@ sequenceDiagram
 | Take profit RR | 2.0 | **1:2 Risk:Reward** |
 | **Position sizing** | | |
 | Margin per trade | 2% | `balance × 0.02` |
-| Leverage | 5x min, 10x max | Configurable range |
+| Leverage | 5x min, 20x max | Capped by asset max (e.g. 5x or 12x). Skip if asset max cannot meet min order value. |
 | **Exits** | | |
 | Time stop | 24 candles | Exit if neither TP nor SL hit |
 | **Data** | | |
