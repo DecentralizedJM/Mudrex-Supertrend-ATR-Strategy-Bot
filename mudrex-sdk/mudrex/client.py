@@ -82,7 +82,7 @@ class MudrexClient:
         base_url: API base URL (default: https://trade.mudrex.com/fapi/v1)
         timeout: Request timeout in seconds (default: 30)
         rate_limit: Enable automatic rate limiting (default: True)
-        max_retries: Maximum retries on rate limit errors (default: 3)
+        max_retries: Maximum retries on rate limit errors (default: 1; avoid hammering on daily limit)
         
     Attributes:
         wallet: Wallet management endpoints
@@ -191,15 +191,13 @@ class MudrexClient:
                 except ValueError:
                     data = {"success": False, "message": response.text}
                 
-                # Handle rate limiting with retry
+                # Handle rate limiting: retry once after retry_after, then fail (avoid hammering on daily limit)
                 if response.status_code == 429:
+                    retry_after = min(float(response.headers.get("Retry-After", 1)), 60.0)
                     if attempt < self.max_retries:
-                        retry_after = float(response.headers.get("Retry-After", 1))
-                        retry_after = min(retry_after, 60.0)  # Cap at 60s (API may return ms or huge value)
-                        logger.warning(f"Rate limited, retrying in {retry_after}s...")
+                        logger.warning(f"Rate limited, retrying once in {retry_after}s...")
                         time.sleep(retry_after)
                         continue
-                    retry_after = min(float(response.headers.get("Retry-After", 1)), 60.0)
                     raise MudrexRateLimitError(
                         message="Rate limit exceeded after retries",
                         retry_after=retry_after,

@@ -110,7 +110,7 @@ class MudrexConfig:
     base_url: Optional[str] = None
     timeout: int = 30
     rate_limit: bool = True
-    max_retries: int = 3
+    max_retries: int = 1  # Retry once on 429; avoid hammering on daily limit
     
     @classmethod
     def from_env(cls) -> "MudrexConfig":
