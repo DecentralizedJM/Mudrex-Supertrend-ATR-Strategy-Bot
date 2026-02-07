@@ -19,6 +19,9 @@ RUN mkdir -p /app/data
 # Copy Mudrex SDK
 COPY mudrex-sdk/mudrex ./mudrex-sdk/mudrex
 
+# Copy strategy core package
+COPY strategy_core ./strategy_core
+
 # Copy application code
 COPY config.py .
 COPY strategy.py .
