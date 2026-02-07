@@ -68,6 +68,10 @@ Thumbs.db
 bot_state.json
 bot.log
 *.log
+data/
+*.plan.md
+.cursor/
+plans/
 
 # Serverless
 .serverless/
@@ -75,3 +79,7 @@ node_modules/
 
 # AWS
 .aws-sam/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
