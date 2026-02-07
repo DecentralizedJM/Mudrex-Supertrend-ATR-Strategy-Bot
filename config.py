@@ -163,6 +163,10 @@ class Config:
         tf = os.getenv("TIMEFRAME", "").strip()
         if tf:
             config.trading.timeframe = tf
+        try:
+            config.trading.max_positions = max(1, int(os.getenv("MAX_POSITIONS", "999").strip()))
+        except ValueError:
+            config.trading.max_positions = 999
         config.strategy.margin_pct = margin_percent / 100.0
         return config
     
