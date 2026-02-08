@@ -163,7 +163,7 @@ class MudrexStrategyAdapter:
         if self.dry_run:
             return
         now = time.time()
-        cooldown = getattr(self.mudrex_config, "rate_limit_cooldown_seconds", 86400.0)
+        cooldown = getattr(self.mudrex_config, "rate_limit_cooldown_seconds", 3600.0)
         if self._rate_limited_until > 0 and now < self._rate_limited_until:
             until_str = datetime.utcfromtimestamp(self._rate_limited_until).strftime("%Y-%m-%d %H:%M UTC")
             raise RateLimitCooldownError(f"Rate limited; not calling Mudrex until {until_str}")
@@ -186,7 +186,7 @@ class MudrexStrategyAdapter:
 
     def _set_rate_limit_cooldown(self) -> None:
         """Set cooldown so we stop calling Mudrex (recovery can take up to 24h)."""
-        cooldown = getattr(self.mudrex_config, "rate_limit_cooldown_seconds", 86400.0)
+        cooldown = getattr(self.mudrex_config, "rate_limit_cooldown_seconds", 3600.0)
         self._rate_limited_until = time.time() + cooldown
         until_str = datetime.utcfromtimestamp(self._rate_limited_until).strftime("%Y-%m-%d %H:%M UTC")
         logger.warning("Mudrex rate limited; backing off until %s (no retries)", until_str)

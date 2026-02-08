@@ -174,7 +174,7 @@ On every candle close, `process_candle` returns:
 | `TRADING_DRY_RUN` | No | `true` for testing (default: `false`). When `true`, no real orders are sent. |
 | `TELEGRAM_BOT_TOKEN` | No | Telegram bot token (from @BotFather) |
 | `TELEGRAM_CHAT_ID` | No | Comma-separated chat IDs (from @userinfobot). Supports multiple users/channels. |
-| `MUDREX_RATE_LIMIT_COOLDOWN_HOURS` | No | Hours to stop calling Mudrex after a 429 (default: `24`). |
+| `MUDREX_RATE_LIMIT_COOLDOWN_HOURS` | No | After a 429, wait this many hours then try one request again (default: `1` = try every hour). |
 
 **Symbols**: If no symbols are configured (default), the bot fetches all active USDT pairs from Mudrex. To limit symbols, set `config.trading.symbols` in code or use `--symbols` when running locally (e.g. `python run_local.py --symbols BTCUSDT,ETHUSDT`).
 
