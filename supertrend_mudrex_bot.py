@@ -273,8 +273,13 @@ class SupertrendMudrexBot:
         # Check balance (adapter throttle enforces 2 req/s and 50/min)
         balance = self.adapter.get_balance()
         if balance is None:
-            error = "Could not get balance (rate limited or API error). Skipping cycle."
-            logger.error(error)
+            if self.adapter.is_in_rate_limit_cooldown():
+                until = self.adapter.rate_limit_cooldown_until_utc() or "unknown"
+                error = f"In rate-limit cooldown until {until}; skipping cycle (no API calls)."
+                logger.info(error)
+            else:
+                error = "Could not get balance (rate limited or API error). Skipping cycle."
+                logger.error(error)
             return BotExecutionResult(
                 success=False,
                 timestamp=timestamp,

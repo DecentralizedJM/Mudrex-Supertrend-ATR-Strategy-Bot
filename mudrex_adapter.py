@@ -191,6 +191,18 @@ class MudrexStrategyAdapter:
         until_str = datetime.utcfromtimestamp(self._rate_limited_until).strftime("%Y-%m-%d %H:%M UTC")
         logger.warning("Mudrex rate limited; backing off until %s (no retries)", until_str)
 
+    def is_in_rate_limit_cooldown(self) -> bool:
+        """True if we are in rate-limit cooldown (not making Mudrex requests)."""
+        if self._rate_limited_until <= 0:
+            return False
+        return time.time() < self._rate_limited_until
+
+    def rate_limit_cooldown_until_utc(self) -> Optional[str]:
+        """Human-readable cooldown end time (UTC) or None if not in cooldown."""
+        if not self.is_in_rate_limit_cooldown():
+            return None
+        return datetime.utcfromtimestamp(self._rate_limited_until).strftime("%Y-%m-%d %H:%M UTC")
+
     def _ensure_asset_specs(self) -> None:
         """Build symbol -> {min_quantity, quantity_step, max_leverage} from list_all() (single bulk call)."""
         if self._asset_specs_map is not None and self._asset_list_cache is not None:
