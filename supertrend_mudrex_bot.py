@@ -253,8 +253,20 @@ class SupertrendMudrexBot:
         logger.info(f"Bot execution started at {timestamp.isoformat()}")
         logger.info("=" * 50)
         
-        # Check balance
+        # Check balance (adapter throttle enforces 2 req/s and 50/min)
         balance = self.adapter.get_balance()
+        if balance is None:
+            error = "Could not get balance (rate limited or API error). Skipping cycle."
+            logger.error(error)
+            return BotExecutionResult(
+                success=False,
+                timestamp=timestamp,
+                symbols_processed=0,
+                signals_generated=0,
+                trades_executed=0,
+                tsl_updates=0,
+                errors=[error],
+            )
         if balance < self.config.trading.min_balance:
             error = f"Insufficient balance: ${balance:.2f} < ${self.config.trading.min_balance:.2f}"
             logger.error(error)
@@ -267,10 +279,8 @@ class SupertrendMudrexBot:
                 tsl_updates=0,
                 errors=[error],
             )
-        
         # Sync positions with exchange
         self.adapter.get_open_positions()
-
         # Preload asset specs once (bulk) to avoid per-symbol API calls
         if not self.adapter.ensure_asset_specs_loaded():
             error = "Asset specs unavailable (rate limited). Skipping cycle."

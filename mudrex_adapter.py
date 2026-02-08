@@ -140,6 +140,33 @@ class MudrexStrategyAdapter:
         self._balance_cache: Optional[float] = None
         self._balance_cache_ts: float = 0.0
         self._balance_cache_ttl: float = 30.0
+        # Mudrex rate limit: 2 req/s, 50/min — throttle before every API call
+        self._mudrex_last_call_time: float = 0.0
+        self._mudrex_call_times: List[float] = []
+
+    def _throttle(self) -> None:
+        """Enforce Mudrex limits: 2 req/s and 50/min before each API call."""
+        if self.dry_run:
+            return
+        now = time.time()
+        # 2 req/s: ensure at least 1s since last call
+        if self._mudrex_last_call_time > 0:
+            elapsed = now - self._mudrex_last_call_time
+            if elapsed < 1.0:
+                time.sleep(1.0 - elapsed)
+                now = time.time()
+        # 50/min: if 50 calls in last 60s, wait until oldest expires
+        self._mudrex_call_times = [t for t in self._mudrex_call_times if now - t < 60]
+        if len(self._mudrex_call_times) >= 50:
+            oldest = min(self._mudrex_call_times)
+            sleep_for = 60 - (now - oldest)
+            if sleep_for > 0:
+                logger.debug("Mudrex 50/min throttle: sleeping %.1fs", sleep_for)
+                time.sleep(sleep_for)
+            now = time.time()
+            self._mudrex_call_times = [t for t in self._mudrex_call_times if now - t < 60]
+        self._mudrex_call_times.append(now)
+        self._mudrex_last_call_time = now
 
     def _ensure_asset_specs(self) -> None:
         """Build symbol -> {min_quantity, quantity_step, max_leverage} from list_all() (single bulk call)."""
@@ -150,6 +177,7 @@ class MudrexStrategyAdapter:
             return
         self._asset_specs_last_attempt = now
         try:
+            self._throttle()
             assets = self.client.assets.list_all()
             self._asset_list_cache = assets
             self._asset_specs_map = {}
@@ -186,12 +214,13 @@ class MudrexStrategyAdapter:
             )
         return self._client
     
-    def get_balance(self) -> float:
-        """Get available futures balance."""
+    def get_balance(self) -> Optional[float]:
+        """Get available futures balance. Returns None on API error (e.g. rate limit) when no cache."""
         now = time.time()
         if self._balance_cache is not None and (now - self._balance_cache_ts) < self._balance_cache_ttl:
             return self._balance_cache
         try:
+            self._throttle()
             balance = self.client.wallet.get_futures_balance()
             available = float(balance.available)
             logger.info(f"Futures balance: ${available:.2f}")
@@ -202,7 +231,8 @@ class MudrexStrategyAdapter:
             logger.error(f"Failed to get balance: {e}")
             if self._balance_cache is not None:
                 return self._balance_cache
-            return 0.0
+            # Rate limit or other error with no cache: do not treat as $0 (would show "Insufficient balance")
+            return None
     
     def get_asset_info(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get asset information from bulk list; fallback to get(symbol) only if symbol not in list."""
@@ -242,6 +272,7 @@ class MudrexStrategyAdapter:
     def set_leverage(self, symbol: str, leverage: str) -> bool:
         """Set leverage for a symbol."""
         try:
+            self._throttle()
             self.client.leverage.set(
                 symbol=symbol,
                 leverage=leverage,
@@ -256,6 +287,7 @@ class MudrexStrategyAdapter:
     def get_open_positions(self) -> Dict[str, PositionState]:
         """Get all open positions and sync with local cache."""
         try:
+            self._throttle()
             positions = self.client.positions.list_open()
             
             # Update cache with exchange data; hydrate positions not in cache (e.g. from prior run)
@@ -576,6 +608,7 @@ class MudrexStrategyAdapter:
             self.set_leverage(symbol, lev)
 
             # Place market order with SL/TP
+            self._throttle()
             order = self.client.orders.create_market_order(
                 symbol=symbol,
                 side=side.value,
@@ -666,15 +699,17 @@ class MudrexStrategyAdapter:
         
         try:
             # Find position on exchange
+            self._throttle()
             positions = self.client.positions.list_open()
             exchange_position = None
-            
+
             for pos in positions:
                 if pos.symbol == symbol:
                     exchange_position = pos
                     break
-            
+
             if exchange_position:
+                self._throttle()
                 self.client.positions.close(exchange_position.position_id)
                 logger.info(f"Closed position {exchange_position.position_id}")
             
@@ -760,11 +795,13 @@ class MudrexStrategyAdapter:
             if delay > 0:
                 time.sleep(delay)
             # Find position on exchange
+            self._throttle()
             positions = self.client.positions.list_open()
             price_str = str(round(new_stop_loss, 4))
             for pos in positions:
                 if pos.symbol == symbol:
                     # Use PATCH (edit_risk_order) to update existing risk order; POST (set_stoploss) returns 400 when order exists
+                    self._throttle()
                     self.client.positions.edit_risk_order(
                         position_id=pos.position_id,
                         stoploss_price=price_str,
