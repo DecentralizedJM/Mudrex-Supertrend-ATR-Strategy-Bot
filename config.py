@@ -110,13 +110,24 @@ class MudrexConfig:
     base_url: Optional[str] = None
     timeout: int = 30
     rate_limit: bool = True
-    max_retries: int = 1  # Retry once on 429; avoid hammering on daily limit
-    
+    # No retry on 429 — recovery can take up to 24h; avoid unnecessary retries
+    max_retries: int = 0
+    # When we get 429, stop calling Mudrex for this long (seconds). Env: MUDREX_RATE_LIMIT_COOLDOWN_HOURS (default 24)
+    rate_limit_cooldown_seconds: float = 86400.0  # 24 hours
+
     @classmethod
     def from_env(cls) -> "MudrexConfig":
-        """Load API secret from environment."""
+        """Load API secret and rate-limit cooldown from environment."""
+        cooldown_hours = 24.0
+        try:
+            raw = os.getenv("MUDREX_RATE_LIMIT_COOLDOWN_HOURS", "").strip()
+            if raw:
+                cooldown_hours = max(1.0, min(168.0, float(raw)))
+        except ValueError:
+            pass
         return cls(
             api_secret=os.getenv("MUDREX_API_SECRET", ""),
+            rate_limit_cooldown_seconds=cooldown_hours * 3600.0,
         )
     
     def validate(self) -> bool:

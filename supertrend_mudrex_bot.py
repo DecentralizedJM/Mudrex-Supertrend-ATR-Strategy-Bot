@@ -26,6 +26,9 @@ from telegram_notifier import TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
+# Max one new position per 10 minutes; take the best opportunity only (low frequency, no HFT)
+OPEN_COOLDOWN_SECONDS = 600  # 10 minutes
+
 
 @dataclass
 class BotExecutionResult:
@@ -97,7 +100,9 @@ class SupertrendMudrexBot:
             bot_token=self.config.telegram.bot_token,
             chat_ids=self.config.telegram.chat_ids,
         )
-        
+        # Max one new position per 10 min; persist so we respect cooldown across restarts
+        self._last_position_open_time: Optional[float] = None
+
     def _df_to_ohlcv(self, df: pd.DataFrame) -> list[dict]:
         """Convert DataFrame to OHLCV list of dicts for strategy_core."""
         ohlcv = []
@@ -129,6 +134,7 @@ class SupertrendMudrexBot:
         self,
         symbol: str,
         balance: float,
+        collect_opens_only: bool = False,
     ) -> ExecutionResult:
         """
         Process a single symbol: get data, run strategy_core, execute.
@@ -175,9 +181,20 @@ class SupertrendMudrexBot:
             logger.debug(f"{symbol} Signal: HOLD ({output['reason']})")
 
         if output["signal"] in ("LONG", "SHORT") and output.get("proposed_position"):
-            result = self.adapter.execute_proposed_position(symbol, output["proposed_position"], balance=balance)
+            pp = output["proposed_position"]
+            notional = float(pp.get("quantity", 0)) * float(pp.get("entry_price", 0))
+            action = "OPEN_LONG" if output["signal"] == "LONG" else "OPEN_SHORT"
+            if collect_opens_only:
+                return ExecutionResult(
+                    success=False,
+                    action=action,
+                    symbol=symbol,
+                    message="Candidate (best-only, max 1 per 10 min)",
+                    proposed_position=pp,
+                    notional=notional,
+                )
+            result = self.adapter.execute_proposed_position(symbol, pp, balance=balance)
             if result.success and result.position_state and result.action in ("OPEN_LONG", "OPEN_SHORT"):
-                pp = output["proposed_position"]
                 self.notifier.notify_open(
                     symbol=symbol,
                     side=pp["side"],
@@ -325,12 +342,12 @@ class SupertrendMudrexBot:
         if not self.data_manager.wait_for_data(symbols, timeout=10):
             logger.warning("Still waiting for some symbol data to arrive...")
 
-        # Process each symbol
+        # Process each symbol (EXIT and TSL execute immediately; OPEN candidates collected for best-only)
         for symbol in symbols:
             try:
-                result = self.process_symbol(symbol, balance)
+                result = self.process_symbol(symbol, balance, collect_opens_only=True)
                 results.append(result.to_dict())
-                
+
                 if result.action in ("OPEN_LONG", "OPEN_SHORT"):
                     signals_generated += 1
                     if result.success:
@@ -339,17 +356,48 @@ class SupertrendMudrexBot:
                     tsl_updates += 1
                 elif result.action == "CLOSE" and result.success:
                     trades_executed += 1
-                
+
                 if not result.success and result.error and result.error != "Data unavailable":
                     errors.append(f"{symbol}: {result.error}")
-            
             except Exception as e:
                 error = f"Error processing {symbol}: {str(e)}"
                 logger.debug(error)
-            
-            # Very small delay just for logging clarity
             time.sleep(0.01)
-        
+
+        # Best-only open: at most one new position per 10 minutes
+        candidates = [
+            (r, i) for i, r in enumerate(results)
+            if r.get("proposed_position") is not None and r.get("notional") is not None
+        ]
+        if candidates:
+            best = max(candidates, key=lambda x: x[0].get("notional", 0.0))
+            best_dict, best_idx = best
+            best_symbol = best_dict.get("symbol", "")
+            best_pp = best_dict["proposed_position"]
+            now_ts = time.time()
+            if self._last_position_open_time is not None and (now_ts - self._last_position_open_time) < OPEN_COOLDOWN_SECONDS:
+                logger.info(
+                    "Skipping new open: max 1 position per 10 min (next allowed in %.0fs)",
+                    OPEN_COOLDOWN_SECONDS - (now_ts - self._last_position_open_time),
+                )
+            else:
+                open_result = self.adapter.execute_proposed_position(best_symbol, best_pp, balance=balance)
+                results[best_idx] = open_result.to_dict()
+                if open_result.success and open_result.action in ("OPEN_LONG", "OPEN_SHORT"):
+                    trades_executed += 1
+                    self._last_position_open_time = now_ts
+                    if open_result.position_state:
+                        self.notifier.notify_open(
+                            symbol=best_symbol,
+                            side=best_pp["side"],
+                            quantity=best_pp["quantity"],
+                            entry_price=best_pp["entry_price"],
+                            stop_loss=best_pp["stop_loss"],
+                            take_profit=best_pp["take_profit"],
+                            leverage=best_pp.get("leverage", 5),
+                            dry_run=self.config.trading.dry_run,
+                        )
+
         success = len(errors) == 0
         skipped_no_data = sum(
             1 for r in results
@@ -403,10 +451,21 @@ class SupertrendMudrexBot:
     def load_state(self, state: Dict[str, Any]) -> None:
         """Load state from storage."""
         self.adapter.load_state(state)
-    
+        t = state.get("last_position_open_time")
+        if t is not None:
+            try:
+                self._last_position_open_time = float(t)
+            except (TypeError, ValueError):
+                self._last_position_open_time = None
+        else:
+            self._last_position_open_time = None
+
     def save_state(self) -> Dict[str, Any]:
         """Save state for storage."""
-        return self.adapter.save_state()
+        out = self.adapter.save_state()
+        if self._last_position_open_time is not None:
+            out["last_position_open_time"] = self._last_position_open_time
+        return out
     
     def close(self) -> None:
         """Clean up resources."""

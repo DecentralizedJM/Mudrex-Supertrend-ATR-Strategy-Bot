@@ -28,6 +28,11 @@ from config import Config, MudrexConfig, TradingConfig
 logger = logging.getLogger(__name__)
 
 
+class RateLimitCooldownError(Exception):
+    """Raised when we are in rate-limit cooldown and skip making the request."""
+    pass
+
+
 @dataclass
 class PositionState:
     """State for an open position."""
@@ -88,7 +93,10 @@ class ExecutionResult:
     order_id: Optional[str] = None
     position_state: Optional[PositionState] = None
     error: Optional[str] = None
-    
+    # Optional: when collecting "best open" candidates (not executed yet)
+    proposed_position: Optional[Dict[str, Any]] = None
+    notional: Optional[float] = None
+
     def to_dict(self) -> Dict[str, Any]:
         result = {
             "success": self.success,
@@ -102,6 +110,10 @@ class ExecutionResult:
             result["position_state"] = self.position_state.to_dict()
         if self.error:
             result["error"] = self.error
+        if self.proposed_position is not None:
+            result["proposed_position"] = self.proposed_position
+        if self.notional is not None:
+            result["notional"] = self.notional
         return result
 
 
@@ -143,19 +155,23 @@ class MudrexStrategyAdapter:
         # Mudrex rate limit: 2 req/s, 50/min — throttle before every API call
         self._mudrex_last_call_time: float = 0.0
         self._mudrex_call_times: List[float] = []
+        # When we get 429, stop calling Mudrex until this time (avoid retries; recovery can take up to 24h)
+        self._rate_limited_until: float = 0.0
 
     def _throttle(self) -> None:
-        """Enforce Mudrex limits: 2 req/s and 50/min before each API call."""
+        """Enforce Mudrex limits: 2 req/s and 50/min; skip if in rate-limit cooldown."""
         if self.dry_run:
             return
         now = time.time()
-        # 2 req/s: ensure at least 1s since last call
+        cooldown = getattr(self.mudrex_config, "rate_limit_cooldown_seconds", 86400.0)
+        if self._rate_limited_until > 0 and now < self._rate_limited_until:
+            until_str = datetime.utcfromtimestamp(self._rate_limited_until).strftime("%Y-%m-%d %H:%M UTC")
+            raise RateLimitCooldownError(f"Rate limited; not calling Mudrex until {until_str}")
         if self._mudrex_last_call_time > 0:
             elapsed = now - self._mudrex_last_call_time
             if elapsed < 1.0:
                 time.sleep(1.0 - elapsed)
                 now = time.time()
-        # 50/min: if 50 calls in last 60s, wait until oldest expires
         self._mudrex_call_times = [t for t in self._mudrex_call_times if now - t < 60]
         if len(self._mudrex_call_times) >= 50:
             oldest = min(self._mudrex_call_times)
@@ -167,6 +183,13 @@ class MudrexStrategyAdapter:
             self._mudrex_call_times = [t for t in self._mudrex_call_times if now - t < 60]
         self._mudrex_call_times.append(now)
         self._mudrex_last_call_time = now
+
+    def _set_rate_limit_cooldown(self) -> None:
+        """Set cooldown so we stop calling Mudrex (recovery can take up to 24h)."""
+        cooldown = getattr(self.mudrex_config, "rate_limit_cooldown_seconds", 86400.0)
+        self._rate_limited_until = time.time() + cooldown
+        until_str = datetime.utcfromtimestamp(self._rate_limited_until).strftime("%Y-%m-%d %H:%M UTC")
+        logger.warning("Mudrex rate limited; backing off until %s (no retries)", until_str)
 
     def _ensure_asset_specs(self) -> None:
         """Build symbol -> {min_quantity, quantity_step, max_leverage} from list_all() (single bulk call)."""
@@ -190,6 +213,18 @@ class MudrexStrategyAdapter:
                     "is_active": bool(getattr(a, "is_active", True)),
                 }
             logger.info(f"Loaded asset specs for {len(self._asset_specs_map)} symbols (bulk)")
+        except RateLimitCooldownError:
+            if self._asset_specs_map is None:
+                self._asset_specs_map = {}
+            if self._asset_list_cache is None:
+                self._asset_list_cache = []
+        except MudrexRateLimitError:
+            self._set_rate_limit_cooldown()
+            self._asset_specs_last_error = now
+            if self._asset_specs_map is None:
+                self._asset_specs_map = {}
+            if self._asset_list_cache is None:
+                self._asset_list_cache = []
         except MudrexAPIError as e:
             logger.error(f"Failed to load asset list: {e}")
             self._asset_specs_last_error = now
@@ -227,11 +262,19 @@ class MudrexStrategyAdapter:
             self._balance_cache = available
             self._balance_cache_ts = now
             return available
+        except RateLimitCooldownError:
+            if self._balance_cache is not None:
+                return self._balance_cache
+            return None
+        except MudrexRateLimitError:
+            self._set_rate_limit_cooldown()
+            if self._balance_cache is not None:
+                return self._balance_cache
+            return None
         except MudrexAPIError as e:
             logger.error(f"Failed to get balance: {e}")
             if self._balance_cache is not None:
                 return self._balance_cache
-            # Rate limit or other error with no cache: do not treat as $0 (would show "Insufficient balance")
             return None
     
     def get_asset_info(self, symbol: str) -> Optional[Dict[str, Any]]:
@@ -280,6 +323,11 @@ class MudrexStrategyAdapter:
             )
             logger.info(f"Set leverage for {symbol} to {leverage}x")
             return True
+        except RateLimitCooldownError:
+            return False
+        except MudrexRateLimitError:
+            self._set_rate_limit_cooldown()
+            return False
         except MudrexAPIError as e:
             logger.error(f"Failed to set leverage for {symbol}: {e}")
             return False
@@ -323,10 +371,15 @@ class MudrexStrategyAdapter:
                     )
             
             return self._positions
+        except RateLimitCooldownError:
+            return self._positions
+        except MudrexRateLimitError:
+            self._set_rate_limit_cooldown()
+            return self._positions
         except MudrexAPIError as e:
             logger.error(f"Failed to get positions: {e}")
             return self._positions
-    
+
     def has_position(self, symbol: str) -> bool:
         """Check if we have an open position for a symbol."""
         return symbol in self._positions
@@ -644,8 +697,16 @@ class MudrexStrategyAdapter:
                 position_state=position_state,
             )
         
+        except RateLimitCooldownError as e:
+            return ExecutionResult(
+                success=False,
+                action=action,
+                symbol=symbol,
+                message="Rate limited (cooldown)",
+                error=str(e),
+            )
         except MudrexRateLimitError as e:
-            logger.warning(f"Rate limited: {e}")
+            self._set_rate_limit_cooldown()
             return ExecutionResult(
                 success=False,
                 action=action,
@@ -653,7 +714,6 @@ class MudrexStrategyAdapter:
                 message="Rate limited",
                 error=str(e),
             )
-        
         except MudrexValidationError as e:
             logger.error(f"Validation error: {e}")
             return ExecutionResult(
@@ -721,7 +781,23 @@ class MudrexStrategyAdapter:
                 symbol=symbol,
                 message="Position closed",
             )
-        
+        except RateLimitCooldownError as e:
+            return ExecutionResult(
+                success=False,
+                action="CLOSE",
+                symbol=symbol,
+                message="Rate limited (cooldown)",
+                error=str(e),
+            )
+        except MudrexRateLimitError as e:
+            self._set_rate_limit_cooldown()
+            return ExecutionResult(
+                success=False,
+                action="CLOSE",
+                symbol=symbol,
+                message="Rate limited",
+                error=str(e),
+            )
         except MudrexAPIError as e:
             logger.error(f"Failed to close position: {e}")
             return ExecutionResult(
@@ -731,7 +807,7 @@ class MudrexStrategyAdapter:
                 message="Failed to close position",
                 error=str(e),
             )
-    
+
     def update_trailing_stop(
         self,
         symbol: str,
@@ -822,7 +898,23 @@ class MudrexStrategyAdapter:
                 symbol=symbol,
                 message="Position not found on exchange",
             )
-        
+        except RateLimitCooldownError as e:
+            return ExecutionResult(
+                success=False,
+                action="UPDATE_TSL",
+                symbol=symbol,
+                message="Rate limited (cooldown)",
+                error=str(e),
+            )
+        except MudrexRateLimitError as e:
+            self._set_rate_limit_cooldown()
+            return ExecutionResult(
+                success=False,
+                action="UPDATE_TSL",
+                symbol=symbol,
+                message="Rate limited",
+                error=str(e),
+            )
         except MudrexAPIError as e:
             logger.error(f"Failed to update TSL: {e}")
             return ExecutionResult(
