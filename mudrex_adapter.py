@@ -220,7 +220,7 @@ class MudrexStrategyAdapter:
                 self._asset_specs_map[a.symbol] = {
                     "symbol": a.symbol,
                     "min_quantity": float(a.min_quantity) if a.min_quantity else 0.001,
-                    "max_leverage": int(a.max_leverage) if a.max_leverage else 20,
+                    "max_leverage": int(float(a.max_leverage)) if a.max_leverage else 20,
                     "quantity_step": float(a.quantity_step) if a.quantity_step else 0.001,
                     "is_active": bool(getattr(a, "is_active", True)),
                 }
