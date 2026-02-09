@@ -14,18 +14,18 @@ from typing import List, Optional
 
 @dataclass
 class StrategyConfig:
-    """Hardcoded Strategy Parameters."""
+    """Hardcoded Strategy Parameters. Tuned for better win rate / quality."""
 
-    # Supertrend
+    # Supertrend (slightly higher factor = fewer false flips, higher-quality signals)
     atr_period: int = 10
-    factor: float = 3.0
+    factor: float = 3.5
 
     # Risk (same ATR period for Supertrend and risk)
     risk_atr_len: int = 10  # Same as atr_period
     tsl_atr_len: int = 10   # Same as atr_period
     risk_atr_mult: float = 2.0
     tsl_mult: float = 2.0
-    tp_rr: float = 2.0  # Risk:Reward 1:2
+    tp_rr: float = 2.5  # Risk:Reward 1:2.5 — let winners run a bit more
 
     # Position sizing: 2% margin, leverage 5x-20x (asset max may be lower)
     margin_pct: float = 0.02
@@ -36,8 +36,8 @@ class StrategyConfig:
     # Exits
     max_bars_in_trade: int = 24
 
-    # Volatility filter (optional)
-    volatility_filter_enabled: bool = False
+    # Volatility filter: only take flips when ATR > median (avoids low-vol chop)
+    volatility_filter_enabled: bool = True
     volatility_median_window: int = 20
 
 

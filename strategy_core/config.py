@@ -8,14 +8,14 @@ from typing import Optional
 class StrategyConfig:
     """Strategy parameters. Immutable for deterministic behavior."""
 
-    # Supertrend
+    # Supertrend (higher factor = fewer false flips)
     atr_period: int = 10
-    supertrend_factor: float = 3.0
+    supertrend_factor: float = 3.5
 
     # Risk
     risk_atr_mult: float = 2.0
     tsl_atr_mult: float = 2.0
-    tp_rr: float = 2.0  # Risk:Reward 1:2
+    tp_rr: float = 2.5  # Risk:Reward 1:2.5
     margin_pct: float = 0.02
     leverage_min: int = 5
     leverage_max: int = 20
@@ -24,6 +24,6 @@ class StrategyConfig:
     # Exits
     max_bars_in_trade: int = 24  # Time stop (e.g., 24 candles on 1H = 24h)
 
-    # Volatility filter (optional)
-    volatility_filter_enabled: bool = False
+    # Volatility filter: only trade when ATR > median (avoids chop)
+    volatility_filter_enabled: bool = True
     volatility_median_window: int = 20

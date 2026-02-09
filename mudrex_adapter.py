@@ -1006,8 +1006,39 @@ class MudrexStrategyAdapter:
                             position_state=position,
                         )
                     except MudrexAPIError as e:
-                        if "risk order id missing" in str(e).lower():
-                            # API didn't accept PATCH (missing id in path or body); try POST to set SL/TP
+                        err_msg = str(e).lower()
+                        is_404 = getattr(e, "status_code", None) == 404 or "not found" in err_msg
+                        if is_404:
+                            # Risk order or position path may not exist; try POST to set SL/TP
+                            try:
+                                self._throttle()
+                                ok = self.client.positions.set_risk_order(
+                                    position_id=pos.position_id,
+                                    stoploss_price=price_str,
+                                    takeprofit_price=str(round(position.take_profit, 4)),
+                                )
+                                if ok:
+                                    position.stop_loss = new_stop_loss
+                                    logger.info("%s: TSL updated via set_risk_order after 404 on PATCH", symbol)
+                                    return ExecutionResult(
+                                        success=True,
+                                        action="UPDATE_TSL",
+                                        symbol=symbol,
+                                        message=f"Updated TSL from {old_stop:.4f} to {new_stop_loss:.4f} (via set)",
+                                        position_state=position,
+                                    )
+                            except MudrexAPIError:
+                                pass
+                            logger.warning("%s: TSL update failed (resource not found); skipping", symbol)
+                            return ExecutionResult(
+                                success=True,
+                                action="UPDATE_TSL",
+                                symbol=symbol,
+                                message="TSL skip (resource not found on exchange)",
+                                position_state=position,
+                            )
+                        if "risk order id missing" in err_msg:
+                            # API didn't accept PATCH (missing id); try POST to set SL/TP
                             try:
                                 self._throttle()
                                 ok = self.client.positions.set_risk_order(
