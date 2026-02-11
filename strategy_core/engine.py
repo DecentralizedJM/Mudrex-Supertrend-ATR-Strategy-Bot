@@ -137,6 +137,15 @@ def process_candle(
     if flip is None:
         return {"signal": "HOLD", "reason": "no_flip", "proposed_position": None}
 
+    # Flip confirmation: require close decisively beyond supertrend (reduces marginal crosses)
+    st_val = st[idx]
+    if np.isfinite(st_val) and hasattr(config, "flip_confirm_atr_pct") and config.flip_confirm_atr_pct > 0:
+        buffer = config.flip_confirm_atr_pct * atr_val
+        if flip == "LONG" and close_val <= st_val + buffer:
+            return {"signal": "HOLD", "reason": "flip_confirm_long", "proposed_position": None}
+        if flip == "SHORT" and close_val >= st_val - buffer:
+            return {"signal": "HOLD", "reason": "flip_confirm_short", "proposed_position": None}
+
     if config.volatility_filter_enabled and not atr_above_median(atr, idx, config.volatility_median_window):
         return {"signal": "HOLD", "reason": "volatility_filter", "proposed_position": None}
 

@@ -8,22 +8,25 @@ from typing import Optional
 class StrategyConfig:
     """Strategy parameters. Immutable for deterministic behavior."""
 
-    # Supertrend (higher factor = fewer false flips)
+    # Supertrend (higher factor = fewer false flips, higher-quality signals)
     atr_period: int = 10
-    supertrend_factor: float = 3.5
+    supertrend_factor: float = 4.0  # 4.0 reduces whipsaw vs 3.5
 
-    # Risk
-    risk_atr_mult: float = 2.0
-    tsl_atr_mult: float = 2.0
-    tp_rr: float = 2.5  # Risk:Reward 1:2.5
+    # Risk — wider SL avoids noise stops; realistic TP improves win rate
+    risk_atr_mult: float = 2.5   # 2.5x ATR gives breathing room in crypto volatility
+    tsl_atr_mult: float = 2.5    # Looser trail = fewer premature exits
+    tp_rr: float = 2.0           # 1:2 R:R is achievable; 2.5R was often missed
     margin_pct: float = 0.02
     leverage_min: int = 5
     leverage_max: int = 20
     leverage: int = 5  # Base leverage (clamped to min/max)
 
-    # Exits
-    max_bars_in_trade: int = 24  # Time stop (e.g., 24 candles on 1H = 24h)
+    # Exits — longer hold lets trends develop
+    max_bars_in_trade: int = 48  # 48 candles (e.g. 12h on 15m) for trend-following
 
     # Volatility filter: only trade when ATR > median (avoids chop)
     volatility_filter_enabled: bool = True
     volatility_median_window: int = 20
+
+    # Flip confirmation: require close beyond supertrend by min ATR% (reduces marginal crosses)
+    flip_confirm_atr_pct: float = 0.15  # 15% of ATR buffer beyond supertrend to confirm

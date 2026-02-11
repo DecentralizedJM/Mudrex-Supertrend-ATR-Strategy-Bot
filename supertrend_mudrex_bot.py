@@ -86,6 +86,7 @@ class SupertrendMudrexBot:
             max_bars_in_trade=self.config.strategy.max_bars_in_trade,
             volatility_filter_enabled=self.config.strategy.volatility_filter_enabled,
             volatility_median_window=self.config.strategy.volatility_median_window,
+            flip_confirm_atr_pct=getattr(self.config.strategy, "flip_confirm_atr_pct", 0.15),
         )
 
         # Initialize Mudrex adapter

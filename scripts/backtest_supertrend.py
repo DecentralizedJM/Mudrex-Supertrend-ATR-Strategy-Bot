@@ -61,14 +61,16 @@ def run_backtest(
 
         if out["signal"] in ("LONG", "SHORT") and out.get("proposed_position"):
             pp = out["proposed_position"]
+            sl = pp["stop_loss"]
             state = TradeState(
                 position_side=pp["side"],
                 entry_price=pp["entry_price"],
-                stop_loss=pp["stop_loss"],
+                stop_loss=sl,
                 take_profit=pp["take_profit"],
                 trailing_stop=None,
                 bars_in_trade=0,
                 extreme_price=pp["entry_price"],
+                initial_stop_loss=sl,
             )
             trades.append({
                 "bar": i,
@@ -159,16 +161,18 @@ def walk_forward(symbol: str, interval: str = "15", train_bars: int = 350, test_
     best_train_return = -1e9
     best_config = None
     grid = [
-        {"atr_period": 10, "factor": 3.0, "tp_rr": 2.0},
-        {"atr_period": 14, "factor": 3.0, "tp_rr": 2.0},
-        {"atr_period": 10, "factor": 2.5, "tp_rr": 2.0},
-        {"atr_period": 10, "factor": 3.0, "tp_rr": 1.5},
+        {"atr_period": 10, "factor": 4.0, "tp_rr": 2.0, "risk_atr_mult": 2.5},
+        {"atr_period": 10, "factor": 3.5, "tp_rr": 2.0, "risk_atr_mult": 2.5},
+        {"atr_period": 14, "factor": 4.0, "tp_rr": 2.0, "risk_atr_mult": 2.5},
+        {"atr_period": 10, "factor": 4.0, "tp_rr": 1.5, "risk_atr_mult": 2.5},
+        {"atr_period": 10, "factor": 4.0, "tp_rr": 2.5, "risk_atr_mult": 2.5},
     ]
     for p in grid:
         cfg = StrategyConfig(
             atr_period=p["atr_period"],
             supertrend_factor=p["factor"],
             tp_rr=p["tp_rr"],
+            risk_atr_mult=p.get("risk_atr_mult", 2.5),
         )
         res = run_backtest(train, cfg)
         if res["total_return_pct"] > best_train_return:
