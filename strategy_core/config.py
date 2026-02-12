@@ -22,7 +22,12 @@ class StrategyConfig:
     leverage: int = 5  # Base leverage (clamped to min/max)
 
     # Exits — longer hold lets trends develop
-    max_bars_in_trade: int = 48  # 48 candles (e.g. 12h on 15m) for trend-following
+    max_bars_in_trade: int = 96  # 96 candles (e.g. 24h on 15m) for trend-following
+
+    # Smart time exit: only time-exit trades that are "flat" (not in meaningful profit).
+    # Trades with unrealised PnL > time_exit_flat_r (in R-multiples) keep running.
+    # E.g. 0.5 means: if trade is > +0.5R in profit, don't time-exit; let TSL handle it.
+    time_exit_flat_r: float = 0.5
 
     # Volatility filter: only trade when ATR > median (avoids chop)
     volatility_filter_enabled: bool = True

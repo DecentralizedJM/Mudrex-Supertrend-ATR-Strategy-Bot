@@ -32,6 +32,7 @@ def check_exit(
     config_tp_rr: float,
     config_tsl_mult: float,
     config_max_bars: int,
+    config_time_exit_flat_r: float = 0.5,
 ) -> str | None:
     """
     Check if position should exit.
@@ -59,6 +60,17 @@ def check_exit(
             return "trailing_stop"
 
     if state.bars_in_trade >= config_max_bars:
+        # Smart time exit: only force-close trades that are "flat" (not in
+        # meaningful profit).  Trades with unrealised PnL > flat_r keep
+        # running so the trailing stop or TP can handle the exit.
+        if stop_distance > 0:
+            if state.position_side == "LONG":
+                unrealised_r = (close - state.entry_price) / stop_distance
+            else:
+                unrealised_r = (state.entry_price - close) / stop_distance
+
+            if unrealised_r > config_time_exit_flat_r:
+                return None  # Trade is in profit — let it ride
         return "time_exit"
 
     return None

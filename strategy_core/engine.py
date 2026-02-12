@@ -117,6 +117,7 @@ def process_candle(
             config.tp_rr,
             config.tsl_atr_mult,
             config.max_bars_in_trade,
+            config.time_exit_flat_r,
         )
         if exit_reason:
             return {
