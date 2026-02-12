@@ -34,4 +34,4 @@ class StrategyConfig:
     volatility_median_window: int = 20
 
     # Flip confirmation: require close beyond supertrend by min ATR% (reduces marginal crosses)
-    flip_confirm_atr_pct: float = 0.15  # 15% of ATR buffer beyond supertrend to confirm
+    flip_confirm_atr_pct: float = 0.25  # 25% of ATR buffer — stricter, fewer low-quality entries

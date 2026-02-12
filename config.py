@@ -41,14 +41,30 @@ class StrategyConfig:
     volatility_median_window: int = 20
 
     # Flip confirmation buffer (% of ATR beyond supertrend)
-    flip_confirm_atr_pct: float = 0.15
+    flip_confirm_atr_pct: float = 0.25  # Stricter — fewer low-confidence entries
+
+
+# Curated top-tier symbols (liquid, reliable) — used when symbols empty and SYMBOLS_TIER=top
+TOP_SYMBOLS = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT",
+    "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT", "MATICUSDT", "UNIUSDT",
+    "ATOMUSDT", "LTCUSDT", "ETCUSDT", "XLMUSDT", "APTUSDT", "ARBUSDT",
+    "OPUSDT", "INJUSDT", "SUIUSDT", "NEARUSDT", "FILUSDT", "IMXUSDT",
+    "SEIUSDT", "TIAUSDT", "PEPEUSDT", "WIFUSDT", "BONKUSDT", "ENAUSDT",
+]
+
+# Known bad pairs (order params incompatible, thin liquidity, etc.)
+SYMBOLS_BLOCKLIST = {
+    "UBUSDT", "KMNOUSDT", "SCUSDT", "1000TOSHIUSDT", "FARTCOINUSDT",
+    "USUALUSDT", "SPELLUSDT", "MAVUSDT", "ATUSDT", "1000LUNCUSDT",
+}
 
 
 @dataclass
 class TradingConfig:
     """Trading-specific configuration."""
     
-    # Set to empty list to automatically fetch ALL tradable assets from Mudrex
+    # Set to empty list → use TOP_SYMBOLS (env SYMBOLS_TIER=top) or all (SYMBOLS_TIER=all)
     symbols: List[str] = field(default_factory=list)
     
     # Default leverage (clamped to leverage_min/max at execution)
@@ -83,6 +99,9 @@ class TradingConfig:
 
     # Dry run mode
     dry_run: bool = False
+
+    # "top" = curated ~30 symbols, "all" = all tradable (544)
+    symbols_tier: str = "top"
 
 
 @dataclass
@@ -177,8 +196,14 @@ class Config:
         tf = os.getenv("TIMEFRAME", "").strip()
         if tf:
             config.trading.timeframe = tf
+        # TRADING_SYMBOLS overrides: comma-separated (e.g. BTCUSDT,ETHUSDT,SOLUSDT)
+        raw_symbols = os.getenv("TRADING_SYMBOLS", "").strip()
+        if raw_symbols:
+            config.trading.symbols = [s.strip() for s in raw_symbols.split(",") if s.strip()]
+        symbols_tier = os.getenv("SYMBOLS_TIER", "top").strip().lower()
+        config.trading.symbols_tier = symbols_tier  # "top" = curated, "all" = 544
         try:
-            config.trading.max_positions = max(1, int(os.getenv("MAX_POSITIONS", "999").strip()))
+            config.trading.max_positions = max(1, int(os.getenv("MAX_POSITIONS", "30").strip()))
         except ValueError:
             config.trading.max_positions = 999
         config.strategy.margin_pct = margin_percent / 100.0

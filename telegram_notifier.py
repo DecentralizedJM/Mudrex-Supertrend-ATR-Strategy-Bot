@@ -3,6 +3,7 @@ Telegram Notifier
 =================
 
 Sends bot notifications to Telegram via Bot API.
+Only notifies on EXECUTED trades (open/close) — no signal spam.
 Supports multiple chat IDs (comma-separated in TELEGRAM_CHAT_ID).
 Requires TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
 """
@@ -15,6 +16,7 @@ import requests
 logger = logging.getLogger(__name__)
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
+STRATEGY_NAME = "Supertrend ATR"
 
 
 class TelegramNotifier:
@@ -64,7 +66,8 @@ class TelegramNotifier:
     ) -> bool:
         prefix = "[DRY] " if dry_run else ""
         text = (
-            f"{prefix}🟢 <b>OPEN {side}</b> {symbol}\n"
+            f"{prefix}✅ <b>{STRATEGY_NAME}</b> — TAKEN\n"
+            f"🟢 OPEN {side} {symbol}\n"
             f"Qty: {quantity} | Entry: ${entry_price:.4f}\n"
             f"SL: ${stop_loss:.4f} | TP: ${take_profit:.4f} | Lev: {leverage}x"
         )
@@ -89,7 +92,8 @@ class TelegramNotifier:
         sign = "+" if pnl >= 0 else ""
         prefix = "[DRY] " if dry_run else ""
         text = (
-            f"{prefix}🔴 <b>CLOSE {side}</b> {symbol}\n"
+            f"{prefix}✅ <b>{STRATEGY_NAME}</b> — TAKEN\n"
+            f"🔴 CLOSE {side} {symbol}\n"
             f"Reason: {reason} | Entry: ${entry_price:.4f} | Exit: ${exit_price:.4f}\n"
             f"PnL: {sign}${pnl:.2f} ({sign}{pnl_pct:.2f}%)"
         )
@@ -97,7 +101,7 @@ class TelegramNotifier:
 
     def notify_warning(self, symbol: str, message: str) -> bool:
         """Send a warning notification (e.g. trade impossible even after scaling)."""
-        text = f"⚠️ <b>WARNING</b> {symbol}\n{message}"
+        text = f"⚠️ <b>{STRATEGY_NAME}</b> — {symbol}\n{message}"
         return self.send(text)
 
     def notify_cycle(
@@ -113,14 +117,18 @@ class TelegramNotifier:
         timeframe: str = "",
         margin_percent: int = 0,
     ) -> bool:
+        """Only send when trades were executed (opened or closed). No spam when 0/0."""
+        if opened == 0 and closed == 0:
+            return False
         prefix = "[DRY] " if dry_run else ""
-        header = f"{prefix}📊 <b>Cycle Summary</b>"
+        header = f"{prefix}📊 <b>{STRATEGY_NAME}</b> — Summary"
         if timeframe or margin_percent:
             header += f" (TF: {timeframe} | Margin: {margin_percent}%)"
         text = (
             f"{header}\n"
             f"Balance: ${balance:.2f} | Positions: {positions_count}\n"
-            f"Signals: {signals} | Opened: {opened} | Closed: {closed} | TSL: {tsl_updates}\n"
-            f"Errors: {errors}"
+            f"Opened: {opened} | Closed: {closed} | TSL: {tsl_updates}"
         )
+        if errors > 0:
+            text += f"\nErrors: {errors}"
         return self.send(text)

@@ -319,16 +319,25 @@ class SupertrendMudrexBot:
             )
         
         # Determine symbols to process
+        from config import TOP_SYMBOLS, SYMBOLS_BLOCKLIST
         symbols = self.config.trading.symbols
         if not symbols:
-            logger.info("No symbols specified, fetching all tradable assets from Mudrex...")
-            symbols = self.adapter.get_tradable_symbols()
-            if symbols:
-                logger.info(f"Discovered {len(symbols)} active USDT pairs")
+            tier = getattr(self.config.trading, "symbols_tier", "top") or "top"
+            if tier == "all":
+                logger.info("SYMBOLS_TIER=all: fetching all tradable assets from Mudrex...")
+                symbols = self.adapter.get_tradable_symbols()
+                if symbols:
+                    logger.info(f"Discovered {len(symbols)} active USDT pairs")
             else:
-                err = "Asset discovery failed (rate limited or empty cache)"
+                symbols = [s for s in TOP_SYMBOLS if s not in SYMBOLS_BLOCKLIST]
+                logger.info(f"SYMBOLS_TIER=top: using {len(symbols)} curated symbols")
+            if not symbols:
+                err = "Asset discovery failed (rate limited or empty cache)" if tier == "all" else "No symbols after blocklist"
                 logger.error(err)
                 errors.append(err)
+
+        # Apply blocklist (filters known bad pairs: order params incompatible, thin liquidity)
+        symbols = [s for s in symbols if s not in SYMBOLS_BLOCKLIST]
 
         if not symbols:
             return BotExecutionResult(
