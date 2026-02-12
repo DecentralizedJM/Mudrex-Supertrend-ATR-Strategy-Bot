@@ -44,13 +44,26 @@ class StrategyConfig:
     flip_confirm_atr_pct: float = 0.25  # Stricter — fewer low-confidence entries
 
 
-# Curated top-tier symbols (liquid, reliable) — used when symbols empty and SYMBOLS_TIER=top
+# Curated top 100 symbols (liquid, reliable) — used when symbols empty and SYMBOLS_TIER=top
 TOP_SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "DOGEUSDT",
     "ADAUSDT", "AVAXUSDT", "LINKUSDT", "DOTUSDT", "MATICUSDT", "UNIUSDT",
     "ATOMUSDT", "LTCUSDT", "ETCUSDT", "XLMUSDT", "APTUSDT", "ARBUSDT",
     "OPUSDT", "INJUSDT", "SUIUSDT", "NEARUSDT", "FILUSDT", "IMXUSDT",
     "SEIUSDT", "TIAUSDT", "PEPEUSDT", "WIFUSDT", "BONKUSDT", "ENAUSDT",
+    "TRXUSDT", "HBARUSDT", "VETUSDT", "ICPUSDT", "RENDERUSDT", "FETUSDT",
+    "AAVEUSDT", "MKRUSDT", "GRTUSDT", "ALGOUSDT", "SANDUSDT", "MANAUSDT",
+    "AXSUSDT", "THETAUSDT", "FTMUSDT", "EGLDUSDT", "XTZUSDT", "FLOWUSDT",
+    "RUNEUSDT", "CRVUSDT", "SNXUSDT", "COMPUSDT", "LDOUSDT", "MNTUSDT",
+    "STXUSDT", "BLURUSDT", "PENDLEUSDT", "JUPUSDT", "WLDUSDT", "STRKUSDT",
+    "DYDXUSDT", "ORDIUSDT", "ARKMUSDT", "TAOUSDT", "ONDOUSDT", "JTOUSDT",
+    "PYTHUSDT", "RONINUSDT", "MEMEUSDT", "PORTALUSDT", "PIXELUSDT", "MANTAUSDT",
+    "ALTUSDT", "ACEUSDT", "NFPUSDT", "AIUSDT", "XAIUSDT", "MOVRUSDT",
+    "CFXUSDT", "AGIXUSDT", "OCEANUSDT", "GALAUSDT", "APEUSDT", "GMTUSDT",
+    "ZECUSDT", "DASHUSDT", "KAVAUSDT", "ROSEUSDT", "ENSUSDT", "LQTYUSDT",
+    "MAGICUSDT", "YGGUSDT", "IDUSDT", "ARUSDT", "BSVUSDT", "BCHUSDT",
+    "IOTAUSDT", "KSMUSDT", "ZILUSDT", "ONEUSDT", "CELOUSDT", "ASTRUSDT",
+    "AUDIOUSDT", "MINAUSDT", "COTIUSDT", "DUSKUSDT",
 ]
 
 # Known bad pairs (order params incompatible, thin liquidity, etc.)
@@ -100,7 +113,7 @@ class TradingConfig:
     # Dry run mode
     dry_run: bool = False
 
-    # "top" = curated ~30 symbols, "all" = all tradable (544)
+    # "top" = curated top 100 symbols, "all" = all tradable (544)
     symbols_tier: str = "top"
 
 
